@@ -26,12 +26,16 @@ jobs:
         with:
           python-version: "3.x"
 
+      - name: Install build dependencies
+        run: |
+          # Cài đặt các công cụ build cơ bản
+          python -m pip install --upgrade pip
+          pip install setuptools wheel twine base58 ply
+
       - name: Build release distributions
         run: |
-          # NOTE: put your own distribution build steps here.
-          pip install --upgrade pip
-          pip install setuptools wheel twine
-          pip install base58 ply
+          # CHỈNH SỬA: Chạy lệnh để tạo ra file .tar.gz và .whl trong thư mục dist/
+          python setup.py sdist bdist_wheel
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
@@ -44,19 +48,15 @@ jobs:
     needs:
       - release-build
     permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
+      # QUAN TRỌNG: Đây là quyền OIDC bắt buộc cho Trusted Publishing
       id-token: write
 
     # Dedicated environments with protections for publishing are strongly recommended.
-    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
+    # Đặt tên environment phải khớp với thiết lập trên PyPI
     environment:
       name: pypi
       # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
-      # url: https://pypi.org/p/YOURPROJECT
-      #
-      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
-      # ALTERNATIVE: exactly, uncomment the following line instead:
-      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+      # url: https://pypi.org/p/bxson 
 
     steps:
       - name: Retrieve release distributions
