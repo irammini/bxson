@@ -7,6 +7,7 @@ import json
 import base64 
 import sys
 import base58 # Required for Base58 decoding
+from typing import Any, Dict, List, Union, TextIO
 
 # --- Lexer Definition (Phần Phân tích Từ vựng) ---
 
@@ -133,9 +134,9 @@ def p_value(p):
              | base64_value'''
     if p.slice[1].type == 'STRING':
         try:
-            p[0] = json.loads(p[1])
+            p[0] = json.loads(p[1]) # Gỡ escape-sequences (ví dụ: \n, \t, \uXXXX)
         except json.JSONDecodeError:
-            p[0] = p[1]
+            p[0] = p[1] # Giữ nguyên nếu không phải JSON string hợp lệ (dự phòng)
     elif p.slice[1].type == 'TRUE': p[0] = True
     elif p.slice[1].type == 'FALSE': p[0] = False
     elif p.slice[1].type == 'NULL': p[0] = None
@@ -192,51 +193,247 @@ parser = yacc.yacc(debug=False, write_tables=False)
 
 # --- Core API Functions (Chức năng Module chính) ---
 
-def loads(s):
-    """Parses a BXSON string (s) into a Python structure."""
-    return parser.parse(s, lexer=lexer)
+# --- API: Loading (Parsing & Decoding) ---
 
-def load(fp):
-    """Parses BXSON content from a file-like object (fp)."""
-    return loads(fp.read())
+def loads(s: str, *, decode: bool = False) -> Union[Dict, List, Any]:
+    """
+    Parses a BXSON string (s) into a Python structure.
 
-def _decode_recursive(data):
+    Args:
+        s (str): The BXSON string to parse.
+        decode (bool, optional): If True, automatically decodes Base-X
+                                 blocks into bytes. Defaults to False.
+
+    Returns:
+        Union[Dict, List, Any]: The parsed Python structure.
+    """
+    data = parser.parse(s, lexer=lexer)
+    if decode:
+        return _decode_recursive(data)
+    return data
+
+def load(fp: TextIO, *, decode: bool = False) -> Union[Dict, List, Any]:
+    """
+    Parses BXSON content from a file-like object (fp).
+
+    Args:
+        fp (TextIO): The file-like object (e.g., open('f.bxson', 'r')).
+        decode (bool, optional): If True, automatically decodes Base-X
+                                 blocks into bytes. Defaults to False.
+
+    Returns:
+        Union[Dict, List, Any]: The parsed Python structure.
+    """
+    return loads(fp.read(), decode=decode)
+
+def _decode_recursive(data: Any) -> Any:
     """Recursively traverses the structure and decodes Base-X blocks."""
     if isinstance(data, dict):
+        # Kiểm tra xem đây có phải là một tag BXSON không
         if data.get("$bxson_type") in ["b32", "b58", "b64"]:
             bx_type = data["$bxson_type"]
             bx_data_str = data["data"].strip()
-            bx_data = bx_data_str.encode('utf-8')
             
             try:
                 if bx_type == "b64":
-                    # Giải pháp: Thêm padding thiếu cho Base64
+                    # UPDATE: Thêm padding thiếu cho Base64
                     padding_needed = (4 - len(bx_data_str) % 4) % 4
                     padded_data = bx_data_str + '=' * padding_needed
                     return base64.b64decode(padded_data.encode('utf-8'))
 
                 elif bx_type == "b32":
-                    # Base32: Không cần padding thủ công trong Python 3.x
-                    return base64.b32decode(bx_data)
+                    # UPDATE: Thêm padding thiếu cho Base32
+                    padding_needed = (8 - len(bx_data_str) % 8) % 8
+                    # Chuỗi Base32 phải là chữ hoa
+                    padded_data = bx_data_str.upper() + '=' * padding_needed
+                    return base64.b32decode(padded_data.encode('utf-8'))
                 
                 elif bx_type == "b58":
-                    # Base58
-                    return base58.b58decode(bx_data) 
+                    # Base58 (thư viện `base58` tự xử lý)
+                    return base58.b58decode(bx_data_str.encode('utf-8'))
             except Exception as e:
                 # Báo lỗi giải mã rõ ràng hơn
-                print(f"Warning: Failed to decode {bx_type} data. Returning raw string. Error: {e}")
+                print(f"Warning: Failed to decode {bx_type} data ('{bx_data_str[:20]}...'). Returning raw string. Error: {e}")
                 return data["data"]
 
+        # Đệ quy cho các giá trị trong dict
         return {k: _decode_recursive(v) for k, v in data.items()}
     
     elif isinstance(data, list):
+        # Đệ quy cho các item trong list
         return [_decode_recursive(item) for item in data]
         
+    # Trả về các kiểu dữ liệu cơ bản (str, int, float, bool, None)
     return data
 
-def decode(data_structure):
-    """Decodes all Base-X tagged blocks into bytes objects."""
+def decode(data_structure: Any) -> Any:
+    """
+    Recursively decodes a pre-parsed BXSON structure,
+    converting all Base-X tagged blocks into bytes objects.
+
+    Args:
+        data_structure (Any): The Python structure (often from 'load' or 'loads')
+                              containing BXSON tags.
+
+    Returns:
+        Any: The structure with Base-X tags converted to bytes.
+    """
     return _decode_recursive(data_structure)
+
+# --- API: Encoding (Python -> BXSON Tags) ---
+
+def encode(data: Any, *, default_encoding: str = 'b64') -> Any:
+    """
+    Recursively encodes Python 'bytes' objects into BXSON tagged dictionaries.
+
+    Args:
+        data (Any): The Python structure (dict, list, etc.) containing bytes.
+        default_encoding (str, optional): The default format ('b64', 'b32', 'b58')
+                                          to use when encoding 'bytes'. Defaults to 'b64'.
+
+    Returns:
+        Any: A new structure where 'bytes' are replaced with
+             {'$bxson_type': ..., 'data': ...} dictionaries.
+    """
+    if isinstance(data, dict):
+        return {k: encode(v, default_encoding=default_encoding) for k, v in data.items()}
+    
+    if isinstance(data, list):
+        return [encode(item, default_encoding=default_encoding) for item in data]
+
+    if isinstance(data, bytes):
+        try:
+            if default_encoding == 'b64':
+                data_str = base64.b64encode(data).decode('utf-8')
+            elif default_encoding == 'b32':
+                data_str = base64.b32encode(data).decode('utf-8')
+            elif default_encoding == 'b58':
+                data_str = base58.b58encode(data).decode('utf-8')
+            else:
+                raise ValueError(f"Unknown default_encoding: {default_encoding}")
+            
+            # Xóa padding Base64 và Base32 để giữ cú pháp BXSON gọn gàng,
+            # vì Decoder đã tự xử lý việc thêm padding
+            if default_encoding == 'b64':
+                 data_str = data_str.rstrip('=')
+            # Base32 nên giữ nguyên chữ hoa và xóa padding
+            elif default_encoding == 'b32':
+                 data_str = data_str.upper().rstrip('=')
+
+            return {"$bxson_type": default_encoding, "data": data_str}
+        except Exception as e:
+            print(f"Warning: Failed to encode bytes to {default_encoding}. Error: {e}")
+            return None # Hoặc trả về một giá trị lỗi
+
+    return data
+
+# --- API: Dumping (Tagged Structure -> BXSON String) ---
+
+def _dumps_recursive(data: Any, indent_level: int, indent_str: Union[str, None]) -> str:
+    """Internal recursive function to format the BXSON string."""
+    
+    current_indent = ""
+    next_indent = ""
+    space_after_colon = "" # Mặc định: không khoảng trắng
+    newline = ""
+
+    if indent_str is not None:
+        newline = "\n"
+        space_after_colon = " " # Có khoảng trắng khi có indent
+        current_indent = indent_str * indent_level
+        next_indent = indent_str * (indent_level + 1)
+
+    # Case 1: BXSON Tag (b32, b58, b64)
+    if isinstance(data, dict) and data.get("$bxson_type") in ["b32", "b58", "b64"]:
+        bx_type = data["$bxson_type"]
+        bx_data_str = data.get("data", "").strip() # Lấy data, strip() để dọn dẹp
+        
+        # Ngắt dòng nếu có indent và data dài
+        if indent_str is not None and len(bx_data_str) > 60:
+             # Đơn giản hóa: Ngắt dòng 1 lần
+             return f"{bx_type}{{{newline}{next_indent}{bx_data_str}{newline}{current_indent}}}"
+        else:
+             # Dữ liệu ngắn hoặc không indent: trên 1 dòng
+             return f"{bx_type}{{{bx_data_str}}}"
+
+    # Case 2: Dictionary
+    if isinstance(data, dict):
+        if not data:
+            return "{}"
+        
+        items = []
+        # Tham số 'separators' giúp kiểm soát khoảng trắng cho JSON key:value string
+        separators = (',', ':') if indent_str is None else (f',{newline}', f':{space_after_colon}')
+
+        for k, v in data.items():
+            key_str = json.dumps(k) # Đảm bảo key là string JSON hợp lệ
+            value_str = _dumps_recursive(v, indent_level + 1, indent_str)
+            # FIX: Loại bỏ khoảng trắng trong JSON key string nếu không indent
+            if indent_str is None:
+                key_str = key_str.replace(': ', ':')
+            
+            items.append(f"{next_indent}{key_str}{separators[1]}{value_str}")
+        
+        return f"{{{newline}{separators[0].join(items)}{newline}{current_indent}}}"
+
+    # Case 3: List
+    if isinstance(data, list):
+        if not data:
+            return "[]"
+            
+        items = []
+        separators = (',', '') if indent_str is None else (f',{newline}', f'{space_after_colon}')
+        
+        for item in data:
+            # FIX: Bỏ space_after_colon ở đây vì đây là list, không phải key:value
+            items.append(f"{next_indent}{_dumps_recursive(item, indent_level + 1, indent_str)}")
+            
+        return f"[{newline}{separators[0].join(items)}{newline}{current_indent}]"
+
+    # Case 4: Primitives (str, int, float, bool, None)
+    # Sử dụng json.dumps để xử lý chuẩn xác.
+    # Khi không indent, json.dumps tạo ra khoảng trắng sau ':' trong dict,
+    # nhưng ở đây data là một giá trị đơn lẻ, nên không cần replace.
+    return json.dumps(data, ensure_ascii=False)
+
+
+def dumps(data_structure: Any, *, indent: Union[int, None] = None) -> str:
+    """
+    Serializes a Python structure (potentially with BXSON tags or bytes)
+    into a BXSON formatted string.
+
+    If the structure contains raw 'bytes' objects, they will be encoded
+    using the 'b64' format by default.
+
+    Args:
+        data_structure (Any): The Python object to serialize.
+        indent (int, optional): If specified, formats the output
+                                string with newlines and indentation.
+
+    Returns:
+        str: The resulting BXSON formatted string.
+    """
+    
+    # Tự động 'encode' (bytes -> tags) nếu cần
+    tagged_data = encode(data_structure, default_encoding='b64')
+
+    indent_str = None
+    if indent is not None and indent > 0:
+        indent_str = " " * indent
+        
+    return _dumps_recursive(tagged_data, indent_level=0, indent_str=indent_str)
+
+def dump(data_structure: Any, fp: TextIO, *, indent: Union[int, None] = None) -> None:
+    """
+    Serializes a Python structure to a BXSON formatted stream (file-like object).
+
+    Args:
+        data_structure (Any): The Python object to serialize.
+        fp (TextIO): The file-like object (e.g., open('f.bxson', 'w')).
+        indent (int, optional): If specified, formats the output
+                                with newlines and indentation.
+    """
+    fp.write(dumps(data_structure, indent=indent))
 
 
 # --- Command-Line Interpreter (CLI) (Trình thông dịch) ---
@@ -252,7 +449,8 @@ if __name__ == "__main__":
 
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
-            bxson_data = load(f)
+            # Sử dụng shorthand --decode ngay tại CLI
+            bxson_data = load(f, decode=should_decode)
     except FileNotFoundError:
         print(f"Error: File '{filepath}' not found.")
         sys.exit(1)
@@ -266,9 +464,8 @@ if __name__ == "__main__":
     print(f"--- BXSON Parsing Successful: {filepath} ---")
     
     if should_decode:
-        decoded_result = decode(bxson_data)
         print("\n--- DECODED RESULT (Bytes Objects) ---")
-        pprint.pprint(decoded_result)
+        pprint.pprint(bxson_data)
     else:
         print("\n--- RAW PARSE RESULT (BXSON Tags) ---")
         pprint.pprint(bxson_data)

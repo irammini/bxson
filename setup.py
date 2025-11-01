@@ -4,10 +4,11 @@ from setuptools import setup, find_packages
 
 setup(
     name='bxson',
-    version='0.1.2',
+    # UPDATE: Bump version to 0.2.0 for new features
+    version='0.2.0',
     description='A JSON-like configuration format supporting native Base32, Base58, and Base64 data types, with Teaser RUI-style ;; comments.',
     long_description=open('README.md').read(),
-    long_description_content_type='text/markdown',
+    long_description_content_type='text_markdown',
     author='Teaserverse',
     url='https://github.com/TeaserLang/bxson',
     license='MIT',
@@ -15,10 +16,11 @@ setup(
     py_modules=['bxson'],
     install_requires=[
         'ply>=3.11',  # Lex and Yacc implementation
-        'base58>=2.1.1', # For Base58 decoding functionality (Vẫn cần)
+        'base58>=2.1.1', # For Base58 decoding functionality
     ],
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        # UPDATE: Status -> 4 - Beta (since it's more feature-complete)
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Libraries :: Python Modules',
         'Topic :: Text Processing',
@@ -30,5 +32,5 @@ setup(
         'Programming Language :: Python :: 3.11',
         'Programming Language :: Python :: 3.12',
     ],
-    keywords=['json', 'base64', 'base32', 'base58', 'parser', 'configuration', 'teaser'],
+    keywords=['json', 'base64', 'base32', 'base58', 'parser', 'configuration', 'config', 'serialization', 'teaser'],
 )
