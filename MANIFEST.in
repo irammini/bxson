@@ -1,25 +1,28 @@
-# --- MANIFEST.in cho BXSON ---
+# --- MANIFEST.in cho BXSON (Hoàn thiện) ---
 
-# Bao gồm các file metadata quan trọng không phải mã nguồn
-# (setup.py sẽ tự động bao gồm bxson.py do dùng py_modules=['bxson'])
+# Bao gồm các file metadata quan trọng
 include README.md
 include LICENSE
 
-# Loại trừ (Exclude) các file tạm thời và thư mục build/cache
-# Dựa trên danh sách trong .gitignore và các quy tắc đóng gói tiêu chuẩn
+# --- Loại trừ Thư mục (Sử dụng 'prune') ---
 
-# Các file tạm thời/cache
+# Loại trừ các thư mục build/cache/môi trường ảo
+prune __pycache__
+prune venv
+prune dist
+prune build
+prune .github
+
+# Loại trừ thư mục egg-info đã được tạo
+prune bxson.egg-info 
+
+# --- Loại trừ Tệp (Sử dụng 'global-exclude' và 'exclude') ---
+
+# Các file tạm thời/cache (ở bất kỳ đâu)
 global-exclude *.pyc
 global-exclude *.pyo
-global-exclude *.egg-info
+global-exclude *.egg-info  # Giữ lại để bắt các trường hợp khác
 
-# Các thư mục tạm thời/môi trường ảo
-# Sử dụng recursive-exclude để loại trừ tất cả nội dung bên trong các thư mục này.
-recursive-exclude __pycache__ *
-recursive-exclude venv *
-recursive-exclude dist *
-recursive-exclude build *
-
-# Loại trừ các file cấu hình hệ thống (Git, CI/CD) không cần thiết trong gói phân phối
+# Loại trừ file cấu hình hệ thống ở thư mục gốc
 exclude .gitignore
-recursive-exclude .github *
+exclude setup.cfg

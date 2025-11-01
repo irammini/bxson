@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='bxson',
-    version='0.1.1',
+    version='0.1.2',
     description='A JSON-like configuration format supporting native Base32, Base58, and Base64 data types, with Teaser RUI-style ;; comments.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
