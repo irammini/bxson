@@ -4,12 +4,12 @@ from setuptools import setup, find_packages
 
 setup(
     name='bxson',
-    version='0.1.0',
+    version='0.1.1',
     description='A JSON-like configuration format supporting native Base32, Base58, and Base64 data types, with Teaser RUI-style ;; comments.',
     long_description=open('README.md').read(),
     long_description_content_type='text/markdown',
-    author='Teaserverse Team',
-    url='https://github.com/irammini/bxson',
+    author='Teaserverse',
+    url='https://github.com/TeaserLang/bxson',
     license='MIT',
     packages=find_packages(exclude=['*.egg-info', 'build', 'venv', 'dist', '__pycache__']), # Loại trừ các thư mục không cần thiết
     py_modules=['bxson'],
