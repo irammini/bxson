@@ -30,12 +30,11 @@ jobs:
         run: |
           # Cài đặt các công cụ build cơ bản
           python -m pip install --upgrade pip
-          pip install setuptools wheel twine base58 ply
+          pip install build twine 
 
       - name: Build release distributions
         run: |
-          # CHỈNH SỬA: Chạy lệnh để tạo ra file .tar.gz và .whl trong thư mục dist/
-          python setup.py sdist bdist_wheel
+          python -m build
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
